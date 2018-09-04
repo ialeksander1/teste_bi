@@ -1,0 +1,133 @@
+﻿///$tab Main
+SET ThousandSep='.';
+SET DecimalSep=',';
+SET MoneyThousandSep='.';
+SET MoneyDecimalSep=',';
+SET MoneyFormat='R$#.##0,00;-R$#.##0,00';
+SET TimeFormat='hh:mm:ss';
+SET DateFormat='DD/MM/YYYY';
+SET TimestampFormat='DD/MM/YYYY hh:mm:ss[.fff]';
+SET FirstWeekDay=6;
+SET BrokenWeeks=1;
+SET ReferenceDay=0;
+SET FirstMonthOfYear=1;
+SET CollationLocale='pt-BR';
+SET MonthNames='jan;fev;mar;abr;mai;jun;jul;ago;set;out;nov;dez';
+SET LongMonthNames='janeiro;fevereiro;março;abril;maio;junho;julho;agosto;setembro;outubro;novembro;dezembro';
+SET DayNames='seg;ter;qua;qui;sex;sáb;dom';
+SET LongDayNames='segunda-feira;terça-feira;quarta-feira;quinta-feira;sexta-feira;sábado;domingo';
+LOAD @1
+FROM
+[C:\Users\Igor Aleksander\teste_bi\config\config.qvs]
+(txt, utf8, no labels, delimiter is '\t', msq);
+
+CNAE:
+LOAD cd_cnpj, 
+     de_ramo_atividade, 
+     cd_ramo_atividade, 
+     nu_ordem, 
+     cd_divisao
+FROM
+[C:\Users\Igor Aleksander\teste_bi\files\dataTransformed\CNAE_neo.csv]
+(txt, codepage is 1252, embedded labels, delimiter is ';', msq);
+
+EmpresasCalc: 
+LOAD cd_cnpj 
+     ,	vl_latitude as latitude
+     , vl_longitude as longitude
+     , vl_total_veiculos_antt 
+     , vl_total_veiculos_leves 
+     , vl_total_veiculos_pesados 
+     , fl_optante_simples 
+     , qt_filial 
+     , fl_optante_simei 
+     , de_saude_tributaria 
+     , de_nivel_atividade
+     ,	IF(vl_total_veiculos_antt >=1,'Empresas com veículos registrados','Empresas sem veículos registrados') as VeiculoAntt
+     ,	IF(fl_optante_simples = 0,'NÃO OPTANTE SIMPLES','OPTANTE SIMPLES') as OptanteSIMPLES
+     ,	IF(fl_optante_simei = 0,'NÃO OPTANTE SIMEI','OPTANTE SIMEI') as OptanteSIMEI
+     ,	IF(vl_total_veiculos_leves <=5,'Leves: 0 - 5',
+     		IF(vl_total_veiculos_leves >5 and vl_total_veiculos_leves <=10,'Leves: 06 - 10',
+     			IF(vl_total_veiculos_leves >10 and vl_total_veiculos_leves <=15,'Leves: 11 - 15',
+     				IF(vl_total_veiculos_leves >15 and vl_total_veiculos_leves <=30,'Leves: 16 - 30',
+     					IF(vl_total_veiculos_leves >30 and vl_total_veiculos_leves <=50,'Leves: 06 - 10',
+     						'Leves: >50'))))) as ClassificacaoLeves
+     ,	IF(vl_total_veiculos_pesados <=5,'Pesados: 0 - 5',
+     		IF(vl_total_veiculos_pesados >5 and vl_total_veiculos_pesados <=10,'Pesados: 06 - 10',
+     			IF(vl_total_veiculos_pesados >10 and vl_total_veiculos_pesados <=15,'Pesados: 11 - 15',
+     				IF(vl_total_veiculos_pesados >15 and vl_total_veiculos_pesados <=30,'Pesados: 16 - 30',
+     					IF(vl_total_veiculos_pesados >30 and vl_total_veiculos_pesados <=50,'Pesados: 06 - 10',
+     						'Pesados: >50'))))) as ClassificacaoPesados
+FROM
+[C:\Users\Igor Aleksander\teste_bi\files\dataMirrors\empresasCalc.csv]
+(txt, utf8, embedded labels, delimiter is ';', msq);
+
+Empresas:
+ODBC CONNECT TO NeoSource;
+SELECT
+		*
+	,	concat(trim(nm_municipio), "|", trim(sg_uf)) as ChaveCoordenadas
+    ,	month(STR_TO_DATE(dt_abertura, '%d/%m/%Y')) as mes
+    ,	year(STR_TO_DATE(dt_abertura, '%d/%m/%Y')) as ano
+FROM
+	neoway.`neo_empresas`;
+
+ODBC CONNECT TO [Sample Simba MongoDB ODBC DSN];
+SQL SELECT *
+FROM Neoway.SetoresERamos;
+
+
+
+
+
+
+
+
+
+///$tab Mapa
+/* Zoom máximo permitido */
+max_zoom_level = 18;
+
+/* Recuo da latitude */
+var_lat_offset = '0';
+
+/* Número para posição da latitude */
+var_mid_lat = '=min(latitude)+(1+var_lat_offset)*((max(latitude)-min(latitude))/2)';
+
+/* Número para posição da longitude */
+var_mid_long = '=min(longitude)+(max(longitude)-min(longitude))/2';
+
+/* Cálculo de Zoom para centralizar o mapa na posição correta */
+
+/* Fiz algumas alterações nessa variável, pois em algumas resoluções o mapa não mostrava os pontos (latitude e longitude) no lugar correto. As alterações foram pequenas, mas resolveu o meu problema com o QVD que esta em anexo. */
+var_zoom = '=max(aggr(if(max( round(256*pow(2,(_zoom_level -1)))+(longitude *((256*pow(2,_zoom_level ))/360)) )-min( round(256*pow(2,(_zoom_level -1)))+(longitude *((256*pow(2,_zoom_level ))/360)) ) <map_size_x AND max((256*pow(2,(_zoom_level-1)))+((0.5*log((1+(sin((latitude)*pi()/180)))/(1-(sin((latitude)*pi()/180)))))*((-256*pow(2,_zoom_level))/(2*pi()))))-min((256*pow(2,(_zoom_level-1)))+((0.5*log((1+(sin((latitude)*pi()/180)))/(1-(sin((latitude)*pi()/180)))))*((-256*pow(2,_zoom_level))/(2*pi()))))<map_size_y,_zoom_level,1),_zoom_level))';
+
+/* Altera o tipo de mapa */
+var_maptype = '=if(isnull(only(maptype)),fieldvalue( '&chr(39)&'maptype'&chr(39)&', 1 ),maptype)';
+
+/* Tamanho do Mapa */
+map_size_x = '640';
+map_size_y = '400';
+
+ 
+
+/* Omitir o campo de Zoom */
+
+SET HidePrefix = '_';
+
+/* Campo necessário para cálculo do melhor Zoom */
+_zoom_level:
+LOAD
+RecNo( ) as _zoom_level
+autogenerate(max_zoom_level);
+
+/* Tipos de mapas disponíveis */
+maptype:
+LOAD * INLINE [
+maptype
+roadmap
+mobile
+satellite
+terrain
+hybrid
+];
